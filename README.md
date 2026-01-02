@@ -130,9 +130,7 @@ SMC emphasizes robustness to modeling uncertainty and disturbances, but can suff
 VehicleLateralStability-Py/
   requirements.txt                    # dependencies
   README.md                           # this file/text
-  notebooks/
-    VehicleLateralStability-Py.ipynb  # jupyter notebook implementation
-    VehicleLateralStability-Py.pdf    # pdf-output of the notebook
+  VehicleLateralStability-Py.pdf      # pdf-output of the jupyter notebook implementation
   src/
     params.py
     profiles.py
