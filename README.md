@@ -50,7 +50,7 @@ $$
 Continuous-time dynamics:
 
 $$
-\dot{x} = A x + B\,\delta
+\dot{x} = A x + B \delta
 $$
 
 The matrices $A$ and $B$ depend on vehicle parameters (mass, yaw inertia, axle distances, cornering stiffnesses) and the constant longitudinal speed $U_x$.
