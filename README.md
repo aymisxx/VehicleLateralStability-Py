@@ -205,6 +205,8 @@ Outputs:
 - Switching action can drive high control rates; with actuator saturation, the controller may not realize the intended sliding behavior.
 - The “equivalent correction” variant reduces chattering (lower control rate) but does not necessarily improve tracking accuracy, especially when reference commands are step-like and steering authority is limited.
 
+![PPO Trajectory](results/03_yaw_compare.png) ![PPO Trajectory](results/04_vy_compare.png)
+
 **Key takeaway:** LQR excels at tracking under the nominal model, while SMC highlights robustness–performance trade-offs and sensitivity to actuator limits.
 
 ---
