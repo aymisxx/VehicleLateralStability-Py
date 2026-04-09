@@ -91,7 +91,7 @@ $$
 y =
 \begin{bmatrix}
 r \\
-V_y
+v_y
 \end{bmatrix}
 $$
 
@@ -114,7 +114,7 @@ $$(x = [V_y \ \ r]^T)$$
 
 The report provides symbolic expressions for the system matrices in terms of vehicle parameters.
 
-#### System matrix \(A\)
+#### System matrix $A$
 
 $$
 A =
@@ -126,7 +126,7 @@ A =
 \end{bmatrix}
 $$
 
-#### Input matrix $$B$$
+#### Input matrix $B$
 
 $$
 B =
@@ -136,7 +136,7 @@ B =
 \end{bmatrix}
 $$
 
-#### Output matrices \(C\) and \(D\)
+#### Output matrices $C$ and $D$
 
 $$
 C =
