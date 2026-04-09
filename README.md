@@ -31,96 +31,248 @@ All controllers are evaluated under the same curvature profile to enable fair co
 
 ---
 
-## Core Concepts and Mathematical Model
+## Mathematical Modeling
 
-### 1) Linear Bicycle Model
+This project models vehicle lateral motion using a **linear bicycle model** with **front steering angle** as the control input. The complete control-oriented formulation combines:
 
-States and input:
+1. a linearized lateral-yaw vehicle model,
+2. path-following error dynamics,
+3. curvature-based desired-state generation, and
+4. feedback control laws built on those dynamics.
 
-- $V_y$: lateral velocity (m/s)  
-- $r$: yaw rate (rad/s)  
-- $\delta$: front steering angle (rad)
+### 1) States, Input, and Outputs
 
-State vector:
+The vehicle states are chosen as lateral velocity and yaw rate:
 
 $$
 x = \begin{bmatrix} V_y \\ r \end{bmatrix}
 $$
 
-Continuous-time dynamics:
+where:
+
+- $V_y$ is the lateral velocity of the vehicle body,
+- $r$ is the yaw rate.
+
+The control input is the front steering angle:
 
 $$
-\dot{x} = A x + B \delta
+u = \delta
 $$
 
-The matrices $A$ and $B$ depend on vehicle parameters (mass, yaw inertia, axle distances, cornering stiffnesses) and the constant longitudinal speed $U_x$.
-
----
-
-### 2) Road Curvature, Reference, and Feedforward Steering
-
-Given road curvature command $\rho(t)$ (1/m):
-
-Desired yaw rate:
+The continuous-time state-space model is written as:
 
 $$
-r_{\text{des}}(t) = U_x\,\rho(t)
+\dot{x} = A x + B u
 $$
 
-Feedforward steering (simple geometric approximation):
-
 $$
-\delta_{\text{ff}}(t) = L\,\rho(t), \quad L = l_f + l_r
+y = Cx + Du
 $$
 
-Feedforward provides the baseline steering required for constant curvature, but does not correct transient deviations.
-
----
-
-### 3) LQR Feedback
-
-LQR minimizes the quadratic cost:
+The report defines the output matrices as:
 
 $$
-J = \int_0^{\infty} \left( x^\top Q x + u^\top R u \right) dt
-$$
-
-Tracking form used here (reference in yaw-rate, $V_{y,\text{des}}=0$):
-
-$$
-\delta(t) = \delta_{\text{ff}}(t) - K\,\big(x(t) - x_{\text{des}}(t)\big), 
-\quad
-x_{\text{des}}(t) =
+C =
 \begin{bmatrix}
-0 \\ r_{\text{des}}(t)
+0 & 1 \\
+1 & 0
+\end{bmatrix},
+\qquad
+D =
+\begin{bmatrix}
+0 \\
+0
 \end{bmatrix}
 $$
 
-LQR typically achieves strong tracking under nominal dynamics, at the cost of increased steering activity.
-
----
-
-### 4) Sliding Mode Control (SMC)
-
-Sliding surface:
+Thus, the output vector is:
 
 $$
-s = (r - r_{\text{des}}) + \lambda\,(V_y - V_{y,\text{des}})
+y =
+\begin{bmatrix}
+r \\
+V_y
+\end{bmatrix}
 $$
 
-Total steering input:
+which simply means the model output contains the same two state variables, reordered.
+
+### 2) Governing Vehicle Dynamics
+
+The modeling starts from planar force and moment balance for a four-wheel vehicle. The appendix lists the governing equations for longitudinal/lateral motion and yaw dynamics, together with the steering-induced force terms. These equations are then reduced into a linear control-oriented model for lateral stability analysis.
+
+The final controller design uses the compact form:
 
 $$
-\delta(t) = \delta_{\text{ff}}(t) + \delta_{\text{eq}}(t) + \delta_{\text{sw}}(t)
+\dot{x} = A x + B u
 $$
 
-A saturation boundary layer is used for the switching term to reduce chattering:
+
+$$(x = [V_y \ \ r]^T)$$
+
+### 3) State-Space Matrices
+
+The report provides symbolic expressions for the system matrices in terms of vehicle parameters.
+
+#### System matrix \(A\)
 
 $$
-\delta_{\text{sw}}(t) = -k\,\mathrm{sat}\left(\frac{s}{\phi}\right)
+A =
+\begin{bmatrix}
+-\dfrac{2(C_{\alpha f}+C_{\alpha r})}{V_x m} &
+-\dfrac{2(C_{\alpha f}l_f - C_{\alpha r}l_r)}{V_x m} - V_x \\[8pt]
+-\dfrac{2(C_{\alpha f}l_f - C_{\alpha r}l_r)}{V_x I_z} &
+-\dfrac{2(C_{\alpha f}l_f^2 + C_{\alpha r}l_r^2)}{V_x I_z}
+\end{bmatrix}
 $$
 
-SMC emphasizes robustness to modeling uncertainty and disturbances, but can suffer from aggressive control action and actuator saturation.
+#### Input matrix $$B$$
+
+$$
+B =
+\begin{bmatrix}
+-\dfrac{2C_{\alpha f}}{m} \\[8pt]
+-\dfrac{2C_{\alpha f}l_f}{I_z}
+\end{bmatrix}
+$$
+
+#### Output matrices \(C\) and \(D\)
+
+$$
+C =
+\begin{bmatrix}
+0 & 1 \\
+1 & 0
+\end{bmatrix},
+\qquad
+D =
+\begin{bmatrix}
+0 \\
+0
+\end{bmatrix}
+$$
+
+Here:
+
+- $C_{\alpha f}$ and $C_{\alpha r}$ are the front and rear cornering stiffnesses,
+- $l_f$ and $l_r$ are the distances from the center of gravity to the front and rear axles,
+- $m$ is the vehicle mass,
+- $I_z$ is the yaw moment of inertia,
+- $V_x$ is the constant longitudinal speed.
+
+These matrices are obtained by substituting the vehicle parameters into the linearized lateral-yaw dynamics.
+
+### 4) Physical Parameters Used
+
+The report uses the following vehicle parameters:
+
+$$
+C_{\alpha f} = 60000 \ \text{N/rad}, \qquad
+C_{\alpha r} = 60000 \ \text{N/rad}
+$$
+
+$$
+l_f = 1.4 \ \text{m}, \qquad
+l_r = 1.65 \ \text{m}
+$$
+
+$$
+V_x = 25 \ \text{m/s}
+$$
+
+$$
+m = 1830 \ \text{kg}, \qquad
+I_z = 2324 \ \text{kg}\cdot\text{m}^2
+$$
+
+Substituting these constants into the symbolic model yields the numerical state-space matrices used in simulation and controller design.
+
+### 5) Path-Following Error Dynamics
+
+To connect the vehicle body dynamics to path tracking, the report defines two path-following errors:
+
+- $e_1$: lateral path error,
+- $e_2$: yaw-angle / heading-related error.
+
+Their dynamics are given by:
+
+$$
+\dot{e}_1 = v_x \sin(e_2) + v_y \cos(e_2)
+$$
+
+$$
+\dot{e}_2 = r - \rho v_x
+$$
+
+where:
+
+- $v_x$ is the longitudinal velocity,
+- $v_y$ is the lateral velocity,
+- $r$ is the yaw rate,
+- $\rho$ is the road curvature.
+
+These equations describe how the vehicle deviates from the desired path in both position and heading.
+
+### 6) Desired State Generation
+
+The desired signals used by the controllers are defined as:
+
+$$
+V_{y,\text{desired}} = 0
+$$
+
+$$
+r_{\text{desired}} = \rho v_x - k_2(e_2 + k_1 e_1)
+$$
+
+This means:
+
+- the desired lateral velocity is zero,
+- the desired yaw rate is based on the road curvature term $\rho v_x$,
+- and additional path-tracking correction is introduced through the error terms $e_1$ and $e_2$.
+
+So the controller is designed not only to stabilize the vehicle, but also to regulate it relative to a desired curved path.
+
+### 7) Feedforward Steering Input
+
+The report also defines a feedforward steering input based on curvature:
+
+$$
+u_{\text{ff}} = L \rho,
+\qquad
+L = l_f + l_r
+$$
+
+This provides a baseline steering command from simple path geometry. In other words, for a desired road curvature $\rho$, the feedforward term supplies the nominal steering angle needed to follow that curvature before any feedback correction is applied.
+
+### 8) Interpretation of $A$, $B$, $C$, and $D$
+
+The matrices have clear physical meaning:
+
+- **$A$** represents the internal lateral-yaw dynamics of the vehicle, including the coupling between lateral velocity and yaw rate.
+- **$B$** captures how front steering angle influences lateral motion and yaw motion.
+- **$C$** selects the output variables of interest from the state vector.
+- **$D$** is zero because the chosen state-space model has no direct feedthrough from steering input to output.
+
+This linear structure is the foundation used for controller design in the project.
+
+### 9) Controllability, Observability, and Stability
+
+Using the state-space model, the report computes the controllability and observability matrices and concludes that both are full rank. Therefore, the system is both controllable and observable, and the realization is minimal.
+
+The report also applies a Lyapunov stability analysis and states that the system is asymptotically stable under the modeled conditions.
+
+### 10) Modeling Summary
+
+Overall, the project combines:
+
+- a **two-state linear lateral-yaw vehicle model**,
+- a **path-following error model**,
+- a **curvature-based desired yaw-rate reference**,
+- a **feedforward steering baseline**, and
+- **feedback control design** based on the resulting states and errors.
+
+This modeling framework enables a fair comparison of feedforward steering, LQR, and Sliding Mode Control for vehicle lateral stability under a shared road-curvature reference.
 
 ---
 
