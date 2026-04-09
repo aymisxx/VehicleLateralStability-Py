@@ -120,7 +120,7 @@ $$
 A =
 \begin{bmatrix}
 -\dfrac{2(C_{\alpha f}+C_{\alpha r})}{V_x m} &
--\dfrac{2(C_{\alpha f}l_f - C_{\alpha r}l_r)}{V_x m} - V_x \\[8pt]
+-\dfrac{2(C_{\alpha f}l_f - C_{\alpha r}l_r)}{V_x m} - V_x \\
 -\dfrac{2(C_{\alpha f}l_f - C_{\alpha r}l_r)}{V_x I_z} &
 -\dfrac{2(C_{\alpha f}l_f^2 + C_{\alpha r}l_r^2)}{V_x I_z}
 \end{bmatrix}
@@ -131,7 +131,7 @@ $$
 $$
 B =
 \begin{bmatrix}
--\dfrac{2C_{\alpha f}}{m} \\[8pt]
+-\dfrac{2C_{\alpha f}}{m} \\
 -\dfrac{2C_{\alpha f}l_f}{I_z}
 \end{bmatrix}
 $$
