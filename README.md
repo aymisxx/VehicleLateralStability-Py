@@ -33,515 +33,249 @@ All controllers are evaluated under the same curvature profile to enable fair co
 
 ## Mathematical Modeling
 
-This project studies a **planar 2D pursuit-evasion interception problem** using a minimal but control-faithful point-mass model. The missile and target are both modeled as second-order particles in an inertial plane, while guidance and control are formulated in **relative coordinates** for clarity and direct interception reasoning.
+This project models vehicle lateral motion using a **linear bicycle model** with **front steering angle** as the control input. The complete control-oriented formulation combines:
 
-The modeling stack consists of:
+1. a linearized lateral-yaw vehicle model,
+2. path-following error dynamics,
+3. curvature-based desired-state generation, and
+4. feedback control laws built on those dynamics.
 
-1. inertial-frame point-mass dynamics for missile and target,
-2. a relative-state formulation for guidance,
-3. discrete-time propagation for simulation and control,
-4. a geometric capture condition,
-5. actuator limits and slew-rate constraints for physically meaningful control.
+### 1) States, Input, and Outputs
 
-### 1) Inertial-Frame States, Inputs, and Assumptions
-
-The model uses a 2D inertial frame with the following quantities:
-
-- Missile position: $p_m \in \mathbb{R}^2$
-- Missile velocity: $v_m \in \mathbb{R}^2$
-- Target position: $p_t \in \mathbb{R}^2$
-- Target velocity: $v_t \in \mathbb{R}^2$
-
-The missile control input is its commanded planar acceleration:
+The vehicle states are chosen as lateral velocity and yaw rate:
 
 $$
-u \in \mathbb{R}^2
-$$
-
-The target acceleration is not controlled by the interceptor. Instead, it is defined by the scenario:
-
-$$
-a_t(t) \in \mathbb{R}^2
-$$
-
-This keeps the problem intentionally minimal and interpretable:
-
-- both agents are **point masses**,
-- motion is purely **2D planar**,
-- no aerodynamics, attitude, seeker, or propulsion dynamics are modeled,
-- target acceleration is assumed available from the scenario definition.
-
-### 2) Continuous-Time Point-Mass Dynamics
-
-The missile and target follow second-order kinematics.
-
-#### Missile dynamics
-
-$$
-\dot{p}_m = v_m
-$$
-
-$$
-\dot{v}_m = u
-$$
-
-#### Target dynamics
-
-$$
-\dot{p}_t = v_t
-$$
-
-$$
-\dot{v}_t = a_t(t)
-$$
-
-These equations say exactly what the simulator implements:
-
-- position is the integral of velocity,
-- velocity is the integral of acceleration,
-- the missile acceleration is the control input,
-- the target acceleration is externally specified by the chosen scenario.
-
-This is the cleanest control-oriented model for studying interception geometry without burying the problem under unnecessary vehicle-specific detail.
-
-### 3) Relative-State Formulation
-
-For guidance and interception, the problem is written in **relative coordinates**.
-
-The relative position and relative velocity are defined as:
-
-$$
-r = p_t - p_m
-$$
-
-$$
-v_{\mathrm{rel}} = v_t - v_m
-$$
-
-The relative state vector is:
-
-$$
-x =
-\begin{bmatrix}
-r_x \\
-r_y \\
-v_x \\
-v_y
-\end{bmatrix}
-=
-\begin{bmatrix}
-p_{t,x} - p_{m,x} \\
-p_{t,y} - p_{m,y} \\
-v_{t,x} - v_{m,x} \\
-v_{t,y} - v_{m,y}
-\end{bmatrix}
-$$
-
-This is the state used throughout the notebook’s guidance logic and diagnostics. It exposes the interception geometry directly: if the relative position goes to zero, the missile reaches the target.
-
-### 4) Continuous-Time Relative Dynamics
-
-Starting from the inertial dynamics,
-
-$$
-r = p_t - p_m
-\quad \Rightarrow \quad
-\dot{r} = \dot{p}_t - \dot{p}_m = v_t - v_m = v_{\text{rel}}
-$$
-
-and similarly,
-
-$$
-\dot{v}_{\text{rel}} = \dot{v}_t - \dot{v}_m = a_t(t) - u
-$$
-
-Therefore, the relative dynamics are:
-
-$$
-\dot{r} = v_{\text{rel}}
-$$
-
-$$
-\dot{v}_{\text{rel}} = a_t(t) - u
-$$
-
-or, component-wise,
-
-$$
-\dot{r}_x = v_x, \qquad \dot{r}_y = v_y
-$$
-
-$$
-\dot{v}_x = a_{t,x}(t) - u_x, \qquad
-\dot{v}_y = a_{t,y}(t) - u_y
-$$
-
-This is the central modeling equation of the project. It makes the controller’s job precise:
-
-- reduce relative position,
-- reduce relative velocity mismatch,
-- do so under acceleration and slew-rate limits.
-
-### 5) Continuous-Time State-Space Form
-
-Using the relative state
-
-$$
-x =
-\begin{bmatrix}
-r_x \\
-r_y \\
-v_x \\
-v_y
-\end{bmatrix},
-\qquad
-u =
-\begin{bmatrix}
-u_x \\
-u_y
-\end{bmatrix},
-\qquad
-a_t =
-\begin{bmatrix}
-a_{t,x} \\
-a_{t,y}
-\end{bmatrix},
-$$
-
-the dynamics can be written in linear state-space form as
-
-$$
-\dot{x} = A_c x + B_c u + E_c a_t
-$$
-
-with
-
-$$
-A_c =
-\begin{bmatrix}
-0 & 0 & 1 & 0 \\
-0 & 0 & 0 & 1 \\
-0 & 0 & 0 & 0 \\
-0 & 0 & 0 & 0
-\end{bmatrix}
-$$
-
-$$
-B_c =
-\begin{bmatrix}
-0 & 0 \\
-0 & 0 \\
--1 & 0 \\
-0 & -1
-\end{bmatrix}
-$$
-
-$$
-E_c =
-\begin{bmatrix}
-0 & 0 \\
-0 & 0 \\
-1 & 0 \\
-0 & 1
-\end{bmatrix}
-$$
-
-Interpretation:
-
-- **$A_c$** propagates the kinematic relationship between relative position and relative velocity,
-- **$B_c$** shows that missile acceleration drives the relative acceleration with a negative sign,
-- **$E_c$** injects target acceleration as an external disturbance / known scenario term.
-
-This linear structure is exactly why constrained MPC can be posed cleanly as a quadratic program.
-
-### 6) Discrete-Time Formulation
-
-The project uses discrete-time simulation with timestep
-
-$$
-dt = 0.05 \text{ s}
-$$
-
-and the controller works over repeated simulation steps up to
-
-$$
-t_{\max} = 25.0 \text{ s}
-$$
-
-The notebook writes the control model generically as
-
-$$
-x_{k+1} = A x_k + B u_k + d_k
+x = \begin{bmatrix} V_y \\ r \end{bmatrix}
 $$
 
 where:
 
-- $x_k$ is the relative state at step $k$,
-- $u_k$ is the missile acceleration command,
-- $d_k$ captures the target-acceleration contribution over the step.
+- $V_y$ is the lateral velocity of the vehicle body,
+- $r$ is the yaw rate.
 
-At the modeling level, the disturbance term comes from target maneuvering:
-
-$$
-d_k \sim a_t(k\,dt)
-$$
-
-The notebook discusses Euler discretization as the simple discrete-time interpretation for controller reasoning, while the actual state propagation in simulation is implemented through numerical integration of the point-mass dynamics. In the finalized simulator, the propagation wrappers use **RK4 by default** for cleaner and more stable stepping of both missile and target trajectories.
-
-### 7) Numerical Integration Used in Simulation
-
-For either missile or target, the simulator packages the state as
+The control input is the front steering angle:
 
 $$
-s =
+u = \delta
+$$
+
+The continuous-time state-space model is written as:
+
+$$
+\dot{x} = A x + B u
+$$
+
+$$
+y = Cx + Du
+$$
+
+The report defines the output matrices as:
+
+$$
+C =
 \begin{bmatrix}
-p_x \\
-p_y \\
-v_x \\
-v_y
+0 & 1 \\
+1 & 0
 \end{bmatrix}
 $$
 
-with continuous dynamics
-
 $$
-\dot{s} =
+D =
 \begin{bmatrix}
-v_x \\
-v_y \\
-a_x \\
-a_y
+0 \\
+0
 \end{bmatrix}
 $$
 
-The notebook implements both:
-
-- Forward Euler
-- RK4
-
-but the default simulation method is **RK4**, used through the common stepping wrapper for both agents.
-
-That means the simulated trajectories are not just algebraic discrete jumps. They are produced by numerically integrating the continuous-time point-mass equations under piecewise-constant acceleration commands over each timestep.
-
-### 8) Capture / Interception Condition
-
-Interception is defined geometrically using a capture radius:
+Thus, the output vector is:
 
 $$
-\|r_k\| = \|p_t - p_m\| \le R_{\text{capture}}
+y =
+\begin{bmatrix}
+r \\
+V_y
+\end{bmatrix}
 $$
 
-The project uses
+which simply means the model output contains the same two state variables, reordered.
+
+### 2) Governing Vehicle Dynamics
+
+The modeling starts from planar force and moment balance for a four-wheel vehicle. The appendix lists the governing equations for longitudinal/lateral motion and yaw dynamics, together with the steering-induced force terms. These equations are then reduced into a linear control-oriented model for lateral stability analysis.
+
+The final controller design uses the compact form:
 
 $$
-R_{\text{capture}} = 5.0 \text{ m}
+\dot{x} = A x + B u
 $$
 
-So the missile is considered to have intercepted the target when the Euclidean distance between them falls below 5 meters.
+$$(x = [V_y \ \ r]^T)$$
 
-This is a **proximity-based capture model**, not a warhead or fuse model. The repository explicitly does **not** include:
+### 3) State-Space Matrices
 
-- terminal blast logic,
-- fuse timing,
-- damage modeling,
-- post-impact dynamics.
+The report provides symbolic expressions for the system matrices in terms of vehicle parameters.
 
-That is why the project notes that repeated threshold crossings or visually overlapping trajectories near interception are modeling artifacts of point-mass motion plus discrete-time capture checking, not controller failure.
-
-### 9) Scenario Modeling
-
-The missile dynamics remain fixed across experiments. What changes from scenario to scenario is the target acceleration law $a_t(t)$.
-
-The notebook explicitly defines scenario families such as:
-
-- **straight target**: zero target acceleration,
-- **turning target**: acceleration applied perpendicular to target velocity,
-- more stressed maneuvers built by increasing target aggressiveness and/or tightening missile constraints.
-
-A turning target is generated by taking the unit direction of target velocity and rotating it by $90^\circ$ to form a perpendicular vector. If $\hat{v}$ is the target velocity direction, then the scenario acceleration has the form
+#### System matrix $A$
 
 $$
-a_t = a_{\text{lat}} \, \hat{v}_{\perp}
+A =
+\begin{bmatrix}
+-\dfrac{2(C_{\alpha f}+C_{\alpha r})}{V_x m} &
+-\dfrac{2(C_{\alpha f}l_f - C_{\alpha r}l_r)}{V_x m} - V_x \\
+-\dfrac{2(C_{\alpha f}l_f - C_{\alpha r}l_r)}{V_x I_z} &
+-\dfrac{2(C_{\alpha f}l_f^2 + C_{\alpha r}l_r^2)}{V_x I_z}
+\end{bmatrix}
 $$
 
-which creates continuous lateral maneuvering without changing the underlying point-mass model.
-
-So the project’s difficulty comes from **scenario-defined maneuvering**, not from changing the equations of motion.
-
-### 10) Physical Control Constraints
-
-To keep the problem physically meaningful, the missile acceleration command is constrained.
-
-The project uses per-axis box bounds:
+#### Input matrix $B$
 
 $$
-|u_x| \le a_{\max}, \qquad |u_y| \le a_{\max}
+B =
+\begin{bmatrix}
+-\dfrac{2C_{\alpha f}}{m} \\
+-\dfrac{2C_{\alpha f}l_f}{I_z}
+\end{bmatrix}
 $$
 
-with
+#### Output matrices $C$ and $D$
 
 $$
-a_{\max} = 30.0 \text{ m/s}^2
-$$
-
-In addition, control smoothness is limited through a per-axis slew-rate bound:
-
-$$
-|u_k - u_{k-1}| \le du_{\max}
-$$
-
-applied component-wise, with
-
-$$
-du_{\max} = 10.0 \text{ m/s}^2 \text{ per step}
-$$
-
-These constraints matter a lot:
-
-- the PD baseline can become reactive and saturate hard,
-- the MPC controller explicitly plans under these limits,
-- stressed scenarios reveal why foresight matters.
-
-### 11) Baseline Guidance Model
-
-The classical reference controller is a PD law written directly on the relative state:
-
-$$
-u_{\text{raw}} = k_p r + k_d v_{\text{rel}}
-$$
-
-where the notebook config uses:
-
-$$
-k_p = 0.8, \qquad k_d = 1.6
-$$
-
-This raw command is then passed through:
-
-1. **slew-rate limiting**, and
-2. **box acceleration saturation**
-
-before being applied to the missile model.
-
-So the baseline is not unconstrained textbook PD. It is a physically clipped PD guidance law operating on the same relative-state model used by the rest of the project.
-
-### 12) MPC Prediction Model
-
-The constrained MPC controller uses the same relative-state structure, but optimizes control over a finite horizon instead of reacting myopically.
-
-The notebook configuration uses
-
-$$
-N_{\text{mpc}} = 25
-$$
-
-which, with $dt = 0.05$ s, corresponds to an MPC look-ahead horizon of
-
-$$
-N_{\text{mpc}} \, dt = 1.25 \text{ s}
-$$
-
-The optimization objective penalizes four things over the prediction horizon:
-
-- relative position error,
-- relative velocity error,
-- control effort,
-- control smoothness.
-
-Using the project’s notation, the objective is formed from:
-
-$$
-\sum_{i=0}^{N-1} w_r \|r_i\|^2
+C =
+\begin{bmatrix}
+0 & 1 \\
+1 & 0
+\end{bmatrix}
 $$
 
 $$
-\sum_{i=0}^{N-1} w_v \|v_{\text{rel},i}\|^2
+D =
+\begin{bmatrix}
+0 \\
+0
+\end{bmatrix}
+$$
+
+Here:
+
+- $C_{\alpha f}$ and $C_{\alpha r}$ are the front and rear cornering stiffnesses,
+- $l_f$ and $l_r$ are the distances from the center of gravity to the front and rear axles,
+- $m$ is the vehicle mass,
+- $I_z$ is the yaw moment of inertia,
+- $V_x$ is the constant longitudinal speed.
+
+These matrices are obtained by substituting the vehicle parameters into the linearized lateral-yaw dynamics.
+
+### 4) Physical Parameters Used
+
+The report uses the following vehicle parameters:
+
+$$
+C_{\alpha f} = 60000 \ \text{N/rad}, \qquad
+C_{\alpha r} = 60000 \ \text{N/rad}
 $$
 
 $$
-\sum_{i=0}^{N-1} w_u \|u_i\|^2
+l_f = 1.4 \ \text{m}, \qquad
+l_r = 1.65 \ \text{m}
 $$
 
 $$
-\sum_{i=0}^{N-1} w_{\Delta u} \|u_i - u_{i-1}\|^2
-$$
-
-with config weights:
-
-$$
-w_r = 10.0, \qquad
-w_v = 1.0, \qquad
-w_u = 0.05, \qquad
-w_{\Delta u} = 0.5
-$$
-
-subject to:
-
-$$
-x_{i+1} = A x_i + B u_i + d_i
-$$
-
-and the acceleration / slew constraints.
-
-Only the first optimized control action is applied at each step, and the problem is re-solved at the next step in receding-horizon fashion.
-
-### 13) Why This Model Works Well for the Project
-
-This modeling choice is deliberately minimal, but it is exactly what the project needs.
-
-It gives:
-
-- clean interception geometry through relative coordinates,
-- deterministic and interpretable dynamics,
-- a linear prediction model suitable for QP-based MPC,
-- an apples-to-apples comparison between a classical PD baseline and constrained optimal control.
-
-At the same time, it stays honest about what is **not** modeled:
-
-- no attitude dynamics,
-- no seeker or sensor noise,
-- no missile aerodynamics,
-- no terminal blast model,
-- no state estimation problem,
-- no 3D engagement geometry.
-
-That is why the repository is strong as an **engineering-first optimal-control interception study** rather than pretending to be a full missile simulation.
-
-### 14) Modeling Summary
-
-In compact form, the project uses:
-
-#### Inertial dynamics
-$$
-\dot{p}_m = v_m, \qquad \dot{v}_m = u
+V_x = 25 \ \text{m/s}
 $$
 
 $$
-\dot{p}_t = v_t, \qquad \dot{v}_t = a_t(t)
+m = 1830 \ \text{kg}, \qquad
+I_z = 2324 \ \text{kg}\cdot\text{m}^2
 $$
 
-#### Relative dynamics
+Substituting these constants into the symbolic model yields the numerical state-space matrices used in simulation and controller design.
+
+### 5) Path-Following Error Dynamics
+
+To connect the vehicle body dynamics to path tracking, the report defines two path-following errors:
+
+- $e_1$: lateral path error,
+- $e_2$: yaw-angle / heading-related error.
+
+Their dynamics are given by:
+
 $$
-r = p_t - p_m, \qquad v_{\text{rel}} = v_t - v_m
+\dot{e}_1 = v_x \sin(e_2) + v_y \cos(e_2)
 $$
 
 $$
-\dot{r} = v_{\text{rel}}, \qquad \dot{v}_{\text{rel}} = a_t(t) - u
+\dot{e}_2 = r - \rho v_x
 $$
 
-#### Capture condition
+where:
+
+- $v_x$ is the longitudinal velocity,
+- $v_y$ is the lateral velocity,
+- $r$ is the yaw rate,
+- $\rho$ is the road curvature.
+
+These equations describe how the vehicle deviates from the desired path in both position and heading.
+
+### 6) Desired State Generation
+
+The desired signals used by the controllers are defined as:
+
 $$
-\|r\| \le R_{\text{capture}}
+V_{y,\text{desired}} = 0
 $$
 
-#### Control constraints
-
 $$
-|u_x|, |u_y| \le a_{\max}, \qquad
-|u_k - u_{k-1}| \le du_{\max}
+r_{\text{desired}} = \rho v_x - k_2(e_2 + k_1 e_1)
 $$
 
-### This mathematical model is the backbone of the repository’s simulation, metrics, plots, and controller comparison pipeline.
+This means:
+
+- the desired lateral velocity is zero,
+- the desired yaw rate is based on the road curvature term $\rho v_x$,
+- and additional path-tracking correction is introduced through the error terms $e_1$ and $e_2$.
+
+So the controller is designed not only to stabilize the vehicle, but also to regulate it relative to a desired curved path.
+
+### 7) Feedforward Steering Input
+
+The report also defines a feedforward steering input based on curvature:
+
+$$
+u_{\text{ff}} = L \rho,
+\qquad
+L = l_f + l_r
+$$
+
+This provides a baseline steering command from simple path geometry. In other words, for a desired road curvature $\rho$, the feedforward term supplies the nominal steering angle needed to follow that curvature before any feedback correction is applied.
+
+### 8) Interpretation of $A$, $B$, $C$, and $D$
+
+The matrices have clear physical meaning:
+
+- **$A$** represents the internal lateral-yaw dynamics of the vehicle, including the coupling between lateral velocity and yaw rate.
+- **$B$** captures how front steering angle influences lateral motion and yaw motion.
+- **$C$** selects the output variables of interest from the state vector.
+- **$D$** is zero because the chosen state-space model has no direct feedthrough from steering input to output.
+
+This linear structure is the foundation used for controller design in the project.
+
+### 9) Controllability, Observability, and Stability
+
+Using the state-space model, the report computes the controllability and observability matrices and concludes that both are full rank. Therefore, the system is both controllable and observable, and the realization is minimal.
+
+The report also applies a Lyapunov stability analysis and states that the system is asymptotically stable under the modeled conditions.
+
+### 10) Modeling Summary
+
+Overall, the project combines:
+
+- a **two-state linear lateral-yaw vehicle model**,
+- a **path-following error model**,
+- a **curvature-based desired yaw-rate reference**,
+- a **feedforward steering baseline**, and
+- **feedback control design** based on the resulting states and errors.
+
+This modeling framework enables a fair comparison of feedforward steering, LQR, and Sliding Mode Control for vehicle lateral stability under a shared road-curvature reference.
 
 ---
 
