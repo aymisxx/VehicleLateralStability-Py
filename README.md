@@ -91,7 +91,7 @@ $$
 y =
 \begin{bmatrix}
 r \\
-v_y
+V_y
 \end{bmatrix}
 $$
 
