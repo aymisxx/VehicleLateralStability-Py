@@ -115,7 +115,7 @@ r = p_t - p_m
 $$
 
 $$
-v_{\text{rel}} = v_t - v_m
+v_{\mathrm{rel}} = v_t - v_m
 $$
 
 The relative state vector is:
@@ -541,7 +541,8 @@ $$
 |u_k - u_{k-1}| \le du_{\max}
 $$
 
-This mathematical model is the backbone of the repository’s simulation, metrics, plots, and controller comparison pipeline.
+### This mathematical model is the backbone of the repository’s simulation, metrics, plots, and controller comparison pipeline.
+
 ---
 
 ## Folder Structure
